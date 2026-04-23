@@ -43,9 +43,23 @@
         "memberId": { "type": "string", "description": "ID del miembro si es un ingreso identificado" }
       },
       "required": ["type", "category", "amount", "date"]
+    },
+    "AdminUser": {
+      "title": "Administrador Autorizado",
+      "description": "Whitelist de correos que pueden acceder al panel.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" }
+      },
+      "required": ["email"]
     }
   },
   "firestore": {
+    "/authorized_users/{email}": {
+      "schema": "AdminUser",
+      "description": "Lista blanca de correos autorizados"
+    },
     "/churches/{churchId}": {
       "schema": "ChurchConfig",
       "description": "Documento de configuración por iglesia"

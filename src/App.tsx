@@ -28,6 +28,7 @@ import {
   where,
   addDoc,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   handleFirestoreError,
@@ -55,6 +56,8 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
   const [newTransaction, setNewTransaction] = useState({ type: 'Ingreso', category: 'Diezmo', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState<any>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -66,11 +69,19 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
     const unsubMembers = onSnapshot(membersRef, (snapshot) => {
       setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `churches/${churchId}/members`));
+    }, (error) => {
+      console.error("Error loading members:", error);
+      // Optionally handle permission error specifically
+      if (error.message.includes("permissions")) {
+        setLoading(false);
+      }
+    });
 
     const unsubTransactions = onSnapshot(transactionsRef, (snapshot) => {
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `churches/${churchId}/transactions`));
+    }, (error) => {
+      console.error("Error loading transactions:", error);
+    });
 
     return () => {
       unsubMembers();
@@ -119,6 +130,19 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
   const totalIncome = transactions.filter(t => t.type === 'Ingreso').reduce((acc, t) => acc + t.amount, 0);
   const totalExpense = transactions.filter(t => t.type === 'Egreso').reduce((acc, t) => acc + t.amount, 0);
   const balance = totalIncome - totalExpense;
+
+  const confirmDelete = async () => {
+    if (memberToDelete) {
+      try {
+        const churchId = 'default-church';
+        await deleteDoc(doc(db, `churches/${churchId}/members/${memberToDelete.id}`));
+        setShowDeleteConfirm(false);
+        setMemberToDelete(null);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, 'members');
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -468,10 +492,9 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
                             <Pencil size={18} />
                           </button>
                           <button 
-                            onClick={async () => {
-                              if (confirm('¿Eliminar miembro definitivamente?')) {
-                                await deleteDoc(doc(db, `churches/default-church/members/${m.id}`));
-                              }
+                            onClick={() => {
+                              setMemberToDelete(m);
+                              setShowDeleteConfirm(true);
                             }}
                             className="text-slate-400 hover:text-rose-500 p-2 transition-colors focus:bg-rose-50 rounded-lg outline-none"
                           >
@@ -668,25 +691,65 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
           </div>
         )}
       </main>
+
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDeleteConfirm(false)}
+              className="absolute inset-0 bg-[#002157]/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl relative z-10 border border-slate-100"
+            >
+              <div className="bg-rose-50 text-rose-500 w-16 h-16 rounded-2xl flex items-center justify-center mb-8 mx-auto">
+                <X size={32} />
+              </div>
+              <div className="text-center mb-10">
+                <h3 className="text-2xl font-display font-bold text-[#002157] mb-3 text-balance">¿Confirmar Eliminación?</h3>
+                <p className="text-slate-500">
+                  ¿Está seguro de que desea eliminar a <span className="font-bold text-[#002157]">{memberToDelete?.fullName}</span>? 
+                  Esta acción es permanente y no se puede deshacer.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-8 py-4 rounded-2xl font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 transition-all border border-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 px-8 py-4 rounded-2xl font-bold text-white bg-rose-500 hover:bg-rose-600 transition-all shadow-lg shadow-rose-200"
+                >
+                  Sí, Eliminar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-const LoginPage = ({ onBack }: { onBack: () => void }) => {
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+const LoginPage = () => {
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      // For this demo, we'll use Google Login for simplicity and security
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      alert('Error al iniciar sesión. Por favor intente con Google.');
+      alert('Error al iniciar sesión con Google.');
     } finally {
       setLoading(false);
     }
@@ -694,103 +757,45 @@ const LoginPage = ({ onBack }: { onBack: () => void }) => {
 
   return (
     <div className="min-h-screen bg-[#E5E7EB] flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background elements for a tranquil, corporate feel */}
+      {/* Background blobs */}
       <div className="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#D4AF37]/20 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#002157]/10 rounded-full blur-[120px]"></div>
       </div>
 
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border border-white/50 p-10 relative z-10"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-10 relative z-10"
       >
-        <button 
-          onClick={onBack}
-          className="absolute top-8 left-8 text-slate-400 hover:text-[#002157] transition-colors flex items-center gap-2 text-sm font-medium group"
-        >
-          <ArrowRight className="rotate-180 group-hover:-translate-x-1 transition-transform" size={18} />
-          Volver
-        </button>
-
-        <div className="text-center mb-10 pt-4">
-          <div className="flex justify-center mb-6">
-            <img 
-              src="https://i.imgur.com/uKqj82Z.png" 
-              alt="GEDEÓN Admin" 
-              className="h-24 w-auto object-contain drop-shadow-md"
-              referrerPolicy="no-referrer"
-            />
+        <div className="text-center mb-10">
+          <div className="bg-[#002157] w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl transform rotate-3">
+            <Award size={48} className="text-[#D4AF37]" />
           </div>
-          <h2 className="text-3xl font-display text-[#002157] mb-2">GEDEÓN Admin</h2>
-          <p className="text-slate-500 font-light">Ingrese sus credenciales de acceso</p>
+          <h2 className="text-4xl font-display text-[#002157] font-bold mb-3">GEDEÓN</h2>
+          <div className="h-1 w-12 bg-[#D4AF37] mx-auto rounded-full mb-4"></div>
+          <p className="text-slate-500 font-medium">Panel de Administración</p>
         </div>
 
         <div className="space-y-6">
           <button 
-            onClick={handleSubmit}
+            onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full bg-white border-2 border-slate-200 text-slate-700 py-4 rounded-2xl font-bold text-lg shadow-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-3 group"
+            className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-100 py-4 px-6 rounded-2xl font-bold text-[#002157] shadow-sm hover:shadow-md hover:border-[#D4AF37]/30 transition-all active:scale-[0.98] disabled:opacity-50"
           >
-            <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-            {loading ? 'Cargando...' : 'Ingresar con Google'}
+            {loading ? (
+              <div className="w-6 h-6 border-2 border-[#002157] border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6" />
+            )}
+            {loading ? 'Verificando...' : 'Ingresar con Google Workspace'}
           </button>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-slate-400">O use su cuenta Selah</span>
-            </div>
+          
+          <div className="pt-6 border-t border-slate-100">
+            <p className="text-xs text-center text-slate-400 leading-relaxed px-4">
+              Solo personal autorizado. Su correo debe estar registrado en la base de datos central en Google Sheets para acceder.
+            </p>
           </div>
-
-          <form onSubmit={(e) => e.preventDefault()} className="space-y-6 opacity-50 pointer-events-none">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700 ml-1">Correo Electrónico</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#002157] transition-colors">
-                  <User size={20} />
-                </div>
-                <input 
-                  type="email" 
-                  disabled
-                  placeholder="pastor@iglesia.com"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 pl-12 pr-4 focus:outline-none transition-all placeholder:text-slate-300"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700 ml-1">Contraseña</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#002157] transition-colors">
-                  <Lock size={20} />
-                </div>
-                <input 
-                  type="password"
-                  disabled
-                  placeholder="••••••••"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 pl-12 pr-12 focus:outline-none transition-all placeholder:text-slate-300"
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit"
-              disabled
-              className="w-full bg-[#002157] text-white py-4 rounded-2xl font-bold text-lg shadow-xl"
-            >
-              Iniciar Sesión
-            </button>
-          </form>
-        </div>
-
-        <div className="mt-10 text-center">
-          <p className="text-slate-400 text-sm">
-            ¿No tiene acceso? <br />
-            <span className="text-[#002157] font-semibold cursor-pointer hover:underline">Contacte a soporte Selah Solutions</span>
-          </p>
         </div>
       </motion.div>
     </div>
@@ -1433,14 +1438,85 @@ const Footer = () => (
 // Re-defining Search to avoid confusion if needed, but using Lucide's Search
 const SearchIcon = ({ size }: { size: number }) => <Search size={size} />;
 
+// Helper to check user in Google Sheet
+const checkUserInSheet = async (emailToCheck: string) => {
+  try {
+    const response = await fetch(`https://docs.google.com/spreadsheets/d/1bUEHUYFB_Szb51BklB7MVJO9Do2Sn0HZpXwVZLj4crw/gviz/tq?tqx=out:csv&sheet=Usuarios`);
+    const csvText = await response.text();
+    
+    // Basic CSV parsing
+    const lines = csvText.split('\n');
+    const headers = (lines[0] || '').replace(/"/g, '').split(',');
+    const emailIndex = headers.indexOf('Email');
+    const passwordIndex = headers.indexOf('Password');
+    
+    if (emailIndex === -1) return null;
+
+    for (let i = 1; i < lines.length; i++) {
+        const columns = lines[i].split('","').map(c => c.replace(/"/g, ''));
+        if (columns[emailIndex]?.toLowerCase() === emailToCheck.toLowerCase()) {
+          return {
+            email: columns[emailIndex],
+            existingPassword: columns[passwordIndex] || '',
+            row: i + 1 
+          };
+        }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error checking sheet:', error);
+    return null;
+  }
+};
+
 export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          // Hardcoded admins always have access
+          const admins = ["Palocontrerasyance@gmail.com", "selahconsultingsas@gmail.com"];
+          const isHardcodedAdmin = currentUser.email && admins.includes(currentUser.email);
+          
+          let isAuthorized = isHardcodedAdmin;
+          
+          if (!isAuthorized && currentUser.email) {
+            // Check Google Sheet for authorized users
+            const sheetUser = await checkUserInSheet(currentUser.email);
+            if (sheetUser) {
+              isAuthorized = true;
+              // Sync to Firestore for rule-based access (optional but helpful)
+              try {
+                await setDoc(doc(db, `authorized_users/${currentUser.email.toLowerCase()}`), {
+                  email: currentUser.email.toLowerCase(),
+                  authorizedAt: new Date().toISOString(),
+                  source: 'google_sheet_sync'
+                }, { merge: true });
+              } catch (e) {
+                console.warn("Could not sync auth to Firestore, but allowed anyway:", e);
+              }
+            }
+          }
+
+          if (isAuthorized) {
+            setUser(currentUser);
+          } else {
+            await signOut(auth);
+            setUser(null);
+            alert(`El usuario ${currentUser.email} no está autorizado en la lista de GEDEÓN. Contacte al administrador.`);
+          }
+        } catch (error) {
+          console.error("Auth check failed:", error);
+          await signOut(auth);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
       setAuthReady(true);
     });
     return () => unsubscribe();
@@ -1469,7 +1545,7 @@ export default function App() {
       {user ? (
         <Dashboard user={user} onLogout={() => signOut(auth)} />
       ) : showLogin ? (
-        <LoginPage onBack={() => setShowLogin(false)} />
+        <LoginPage />
       ) : (
         <>
           <Navbar onLoginClick={() => setShowLogin(true)} />
