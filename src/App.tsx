@@ -212,7 +212,20 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
             </h1>
             <p className="text-slate-500">Bienvenido al centro de mando de su iglesia.</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end text-right px-4">
+              <span className="text-xs font-bold text-[#002157] uppercase tracking-wider">
+                {user.nombreCompleto || user.email?.split('@')[0]} ({user.idUsuario || 'No ID'})
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium italic">
+                {user.nombreIglesia || 'Iglesia GEDEÓN'}
+              </span>
+              {user.rol && (
+                <span className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-widest mt-0.5">
+                  {user.rol}
+                </span>
+              )}
+            </div>
             <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-4">
               <Calendar size={18} className="text-[#D4AF37]" />
               <span className="text-sm font-medium text-slate-600">{new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -1449,6 +1462,10 @@ const checkUserInSheet = async (emailToCheck: string) => {
     const headers = (lines[0] || '').replace(/"/g, '').split(',');
     const emailIndex = headers.indexOf('Email');
     const passwordIndex = headers.indexOf('Password');
+    const nombreIndex = headers.indexOf('Nombre_Completo');
+    const idUsuarioIndex = headers.indexOf('ID_Usuario');
+    const iglesiaIndex = headers.indexOf('Nombre_Iglesia');
+    const rolIndex = headers.indexOf('Rol');
     
     if (emailIndex === -1) return null;
 
@@ -1458,6 +1475,10 @@ const checkUserInSheet = async (emailToCheck: string) => {
           return {
             email: columns[emailIndex],
             existingPassword: columns[passwordIndex] || '',
+            nombreCompleto: columns[nombreIndex] || '',
+            idUsuario: columns[idUsuarioIndex] || '',
+            nombreIglesia: columns[iglesiaIndex] || '',
+            rol: columns[rolIndex] || '',
             row: i + 1 
           };
         }
@@ -1484,17 +1505,24 @@ export default function App() {
           
           let isAuthorized = isHardcodedAdmin;
           
-          if (!isAuthorized && currentUser.email) {
-            // Check Google Sheet for authorized users
+          let metaData = {};
+          if (currentUser.email) {
             const sheetUser = await checkUserInSheet(currentUser.email);
             if (sheetUser) {
               isAuthorized = true;
-              // Sync to Firestore for rule-based access (optional but helpful)
+              metaData = {
+                nombreCompleto: sheetUser.nombreCompleto,
+                idUsuario: sheetUser.idUsuario,
+                nombreIglesia: sheetUser.nombreIglesia,
+                rol: sheetUser.rol
+              };
+              // Sync to Firestore for rule-based access
               try {
                 await setDoc(doc(db, `authorized_users/${currentUser.email.toLowerCase()}`), {
                   email: currentUser.email.toLowerCase(),
                   authorizedAt: new Date().toISOString(),
-                  source: 'google_sheet_sync'
+                  source: 'google_sheet_sync',
+                  ...metaData
                 }, { merge: true });
               } catch (e) {
                 console.warn("Could not sync auth to Firestore, but allowed anyway:", e);
@@ -1503,11 +1531,11 @@ export default function App() {
           }
 
           if (isAuthorized) {
-            setUser(currentUser);
+            setUser({ ...currentUser, ...metaData });
           } else {
             await signOut(auth);
             setUser(null);
-            alert(`El usuario ${currentUser.email} no está autorizado en la lista de GEDEÓN. Contacte al administrador.`);
+            alert("Correo no registrado, intente con un correo autorizado.");
           }
         } catch (error) {
           console.error("Auth check failed:", error);
