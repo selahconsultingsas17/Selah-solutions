@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: churches
+    // Document ID: {churchId}
+    // Fields:
+    //   - churchId: string (required) - Unique ID
+    //   - name: string (required) - Church name
+    //   - city: string (optional) - City
+    //   - pastor: string (required) - Main pastor
+    //   - logoUrl: string (optional) - Logo URL
+    //
+    // Collection: churches/{churchId}/members
+    // Document ID: {memberId}
+    // Fields:
+    //   - fullName: string (required)
+    //   - email: string (optional, email format)
+    //   - phone: string (optional)
+    //   - status: string (required, enum: Activo, Inactivo, Visitante)
+    //   - role: string (optional)
+    //
+    // Collection: churches/{churchId}/transactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - type: string (required, enum: Ingreso, Egreso)
+    //   - category: string (required)
+    //   - amount: number (required, positive)
+    //   - date: string (required, date format)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "Palocontrerasyance@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isPositive(field) {
+      return request.resource.data[field] is number && request.resource.data[field] > 0;
+    }
+
+    function isValidString(field, maxLen) {
+      return request.resource.data[field] is string && request.resource.data[field].size() <= maxLen;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /churches/{churchId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+
+      match /members/{memberId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated(); // For now, let authenticated users manage members
+      }
+
+      match /transactions/{transactionId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated(); // For now, let authenticated users manage transactions
+      }
+    }
+  }
+}

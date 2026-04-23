@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "ChurchConfig": {
+      "title": "Configuración de Iglesia",
+      "description": "Configuración básica de la iglesia en el sistema.",
+      "type": "object",
+      "properties": {
+        "churchId": { "type": "string", "description": "ID único de la iglesia" },
+        "name": { "type": "string", "description": "Nombre de la iglesia" },
+        "city": { "type": "string", "description": "Ciudad de ubicación" },
+        "pastor": { "type": "string", "description": "Nombre del pastor principal" },
+        "logoUrl": { "type": "string", "description": "URL del logo de la iglesia" }
+      },
+      "required": ["churchId", "name", "pastor"]
+    },
+    "Member": {
+      "title": "Miembro",
+      "description": "Información de un miembro de la congregación.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "group": { "type": "string", "description": "Nombre del grupo al que pertenece" },
+        "entryDate": { "type": "string", "format": "date", "description": "Fecha de ingreso a la iglesia" },
+        "status": { "type": "string", "enum": ["Activo", "Inactivo", "Visitante"] },
+        "observations": { "type": "string", "description": "Notas u observaciones adicionales" }
+      },
+      "required": ["fullName", "status"]
+    },
+    "Transaction": {
+      "title": "Transacción Financiera",
+      "description": "Registro de ingresos o egresos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["Ingreso", "Egreso"] },
+        "category": { "type": "string", "description": "Diezmo, Ofrenda, Gasto Operativo, etc." },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "memberId": { "type": "string", "description": "ID del miembro si es un ingreso identificado" }
+      },
+      "required": ["type", "category", "amount", "date"]
+    }
+  },
+  "firestore": {
+    "/churches/{churchId}": {
+      "schema": "ChurchConfig",
+      "description": "Documento de configuración por iglesia"
+    },
+    "/churches/{churchId}/members/{memberId}": {
+      "schema": "Member",
+      "description": "Colección de miembros de la iglesia"
+    },
+    "/churches/{churchId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Colección de transacciones financieras"
+    }
+  }
+}
