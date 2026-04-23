@@ -11,7 +11,7 @@ import {
   Wallet, ShoppingCart, BarChart3, MessageCircle, Search,
   Target, ClipboardList, Calendar, UserCheck, Settings, PieChart, Cloud,
   Smartphone, Database, Sliders, Zap, Award, Activity, Eye, Rocket, Clock, Coins,
-  Lock, EyeOff, User, LogIn
+  Lock, EyeOff, User, LogIn, Pencil
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -54,6 +54,7 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
   });
   const [newTransaction, setNewTransaction] = useState({ type: 'Ingreso', category: 'Diezmo', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [editingMember, setEditingMember] = useState<any>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -81,7 +82,12 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
     e.preventDefault();
     try {
       const churchId = 'default-church';
-      await addDoc(collection(db, `churches/${churchId}/members`), newMember);
+      if (editingMember) {
+        await setDoc(doc(db, `churches/${churchId}/members/${editingMember.id}`), newMember);
+        setEditingMember(null);
+      } else {
+        await addDoc(collection(db, `churches/${churchId}/members`), newMember);
+      }
       setNewMember({ 
         fullName: '', 
         email: '', 
@@ -92,7 +98,7 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
         observations: '' 
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'members');
+      handleFirestoreError(error, editingMember ? OperationType.UPDATE : OperationType.CREATE, 'members');
     }
   };
 
@@ -287,9 +293,22 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
 
             {/* Add Member Form */}
             <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
-              <h3 className="text-xl font-bold text-[#002157] mb-8 flex items-center gap-3">
-                <UserCheck className="text-[#D4AF37]" />
-                Registrar Nuevo Miembro
+              <h3 className="text-xl font-bold text-[#002157] mb-8 flex items-center justify-between">
+                <span className="flex items-center gap-3">
+                  <UserCheck className="text-[#D4AF37]" />
+                  {editingMember ? 'Editar Datos de Miembro' : 'Registrar Nuevo Miembro'}
+                </span>
+                {editingMember && (
+                  <button 
+                    onClick={() => {
+                      setEditingMember(null);
+                      setNewMember({ fullName: '', email: '', phone: '', group: '', entryDate: new Date().toISOString().split('T')[0], status: 'Activo', observations: '' });
+                    }}
+                    className="text-xs font-bold text-rose-500 hover:bg-rose-50 px-4 py-2 rounded-xl transition-all"
+                  >
+                    Cancelar Edición
+                  </button>
+                )}
               </h3>
               <form onSubmit={handleAddMember} className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -369,7 +388,7 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
                 <div className="flex justify-end">
                   <button type="submit" className="bg-[#002157] text-white px-10 py-4 rounded-2xl font-bold hover:bg-blue-900 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20">
                     <Users size={20} />
-                    Registrar Miembro
+                    {editingMember ? 'Guardar Cambios' : 'Registrar Miembro'}
                   </button>
                 </div>
               </form>
@@ -430,14 +449,31 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
                           </span>
                         </td>
                         <td className="px-8 py-6 text-right">
-                          <button className="text-slate-400 hover:text-[#002157] p-2 transition-colors"><Settings size={18} /></button>
+                          <button 
+                            onClick={() => {
+                              setEditingMember(m);
+                              setNewMember({
+                                fullName: m.fullName,
+                                email: m.email || '',
+                                phone: m.phone || '',
+                                group: m.group || '',
+                                entryDate: m.entryDate || new Date().toISOString().split('T')[0],
+                                status: m.status || 'Activo',
+                                observations: m.observations || ''
+                              });
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="text-slate-400 hover:text-[#002157] p-2 transition-colors focus:bg-slate-100 rounded-lg outline-none"
+                          >
+                            <Pencil size={18} />
+                          </button>
                           <button 
                             onClick={async () => {
-                              if (confirm('¿Eliminar miembro?')) {
+                              if (confirm('¿Eliminar miembro definitivamente?')) {
                                 await deleteDoc(doc(db, `churches/default-church/members/${m.id}`));
                               }
                             }}
-                            className="text-slate-400 hover:text-rose-500 p-2 transition-colors"
+                            className="text-slate-400 hover:text-rose-500 p-2 transition-colors focus:bg-rose-50 rounded-lg outline-none"
                           >
                             <X size={18} />
                           </button>
@@ -1452,35 +1488,38 @@ export default function App() {
       )}
 
       {/* Persistent Action Floating Buttons */}
-      <div className={`fixed bottom-8 ${user ? 'left-[300px]' : 'left-8'} z-50 flex flex-col gap-4 transition-all duration-500`}>
-        <motion.a 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          href="https://wa.me/573197268303?text=Hola,%20quisiera%20agendar%20un%20diagnóstico%20gratuito" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="bg-[#002157] text-white px-6 py-4 md:px-8 md:py-4 rounded-full shadow-2xl hover:bg-blue-900 transition-all hover:scale-105 active:scale-95 flex items-center gap-3 group border border-[#D4AF37]/30"
-        >
-          <Calendar size={20} className="text-[#D4AF37]" />
-          <span className="font-bold whitespace-nowrap hidden sm:inline text-sm md:text-base">Agendar diagnóstico gratuito</span>
-          <span className="font-bold whitespace-nowrap sm:hidden">Agendar</span>
-        </motion.a>
-      </div>
+      {!user && (
+        <>
+          <div className={`fixed bottom-8 ${user ? 'left-[300px]' : 'left-8'} z-50 flex flex-col gap-4 transition-all duration-500`}>
+            <motion.a 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              href="https://wa.me/573197268303?text=Hola,%20quisiera%20agendar%20un%20diagnóstico%20gratuito" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="bg-[#002157] text-white px-6 py-4 md:px-8 md:py-4 rounded-full shadow-2xl hover:bg-blue-900 transition-all hover:scale-105 active:scale-95 flex items-center gap-3 group border border-[#D4AF37]/30"
+            >
+              <Calendar size={20} className="text-[#D4AF37]" />
+              <span className="font-bold whitespace-nowrap hidden sm:inline text-sm md:text-base">Agendar diagnóstico gratuito</span>
+              <span className="font-bold whitespace-nowrap sm:hidden">Agendar</span>
+            </motion.a>
+          </div>
 
-      {/* WhatsApp Floating Button */}
-      <motion.a 
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        href="https://wa.me/573197268303" 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="fixed bottom-8 right-8 z-50 bg-green-500 text-white p-4 rounded-full shadow-2xl hover:bg-green-600 transition-all hover:scale-110 active:scale-95 group"
-      >
-        <MessageCircle size={32} />
-        <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-white text-slate-800 px-4 py-2 rounded-xl shadow-xl text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          ¿Necesitas ayuda?
-        </span>
-      </motion.a>
+          <motion.a 
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            href="https://wa.me/573197268303" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="fixed bottom-8 right-8 z-50 bg-green-500 text-white p-4 rounded-full shadow-2xl hover:bg-green-600 transition-all hover:scale-110 active:scale-95 group"
+          >
+            <MessageCircle size={32} />
+            <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-white text-slate-800 px-4 py-2 rounded-xl shadow-xl text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              ¿Necesitas ayuda?
+            </span>
+          </motion.a>
+        </>
+      )}
     </div>
   );
 }
